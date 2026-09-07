@@ -4,6 +4,7 @@ local J = require( GetScriptDirectory()..'/FunLib/jmz_func')
 local Version      = require(GetScriptDirectory()..'/FunLib/version')
 local Localization = require(GetScriptDirectory()..'/FunLib/localization')
 local Customize    = require(GetScriptDirectory()..'/Customize/general')
+local BuildStamp   = require(GetScriptDirectory()..'/FunLib/build_stamp')
 
 
 local bot = GetBot()
@@ -343,7 +344,8 @@ function AnnounceMessages()
 			local isFirstLine  = (numberAnnouncePrinted == 1)
 			if message then
 				-- Match original behavior: first line (or if no enemy bots) can be global
-				bot:ActionImmediate_Chat(isFirstLine and (message .. Version.number) or message, enemyBots == 0 or isFirstLine)
+				-- CDS-PATCH: append the build stamp so you can see which deploy is live.
+				bot:ActionImmediate_Chat(isFirstLine and (message .. Version.number .. ' [' .. BuildStamp.id .. ']') or message, enemyBots == 0 or isFirstLine)
 			end
 			numberAnnouncePrinted   = numberAnnouncePrinted + 1
 			lastAnnouncePrintedTime = GameTime()

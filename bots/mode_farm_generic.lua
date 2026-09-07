@@ -4,6 +4,7 @@ end
 
 local Utils = require( GetScriptDirectory()..'/FunLib/utils' )
 local Version = require(GetScriptDirectory()..'/FunLib/version')
+local BuildStamp = require(GetScriptDirectory()..'/FunLib/build_stamp')
 local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
 local Customize = require( GetScriptDirectory()..'/Customize/general' )
 
@@ -929,7 +930,8 @@ function AnnounceMessages()
 			local msg = welcome_msgs[numberAnnouncePrinted]
 			local isFirstLine = numberAnnouncePrinted == 1
 			if msg then
-				bot:ActionImmediate_Chat(isFirstLine and msg .. Version.number or msg, nB == 0 or isFirstLine)
+				-- CDS-PATCH: append the build stamp so you can see which deploy is live.
+				bot:ActionImmediate_Chat(isFirstLine and (msg .. Version.number .. ' [' .. BuildStamp.id .. ']') or msg, nB == 0 or isFirstLine)
 			end
 			numberAnnouncePrinted = numberAnnouncePrinted + 1
 			lastAnnouncePrintedTime = GameTime()

@@ -8,6 +8,9 @@ if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" 
 local Version = require 'bots.FunLib.version'
 -- Print version to console
 print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number)
+-- CDS-PATCH: build stamp to the console, so you can confirm a deploy without
+-- having to sit through hero selection.
+print('[BUILD] ' .. require('bots.FunLib.build_stamp').id)
 -- Dependencies
 -- global debug flag
 require 'bots.FretBots.Debug'
