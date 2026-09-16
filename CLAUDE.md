@@ -65,6 +65,12 @@ all we have:
    several near-miss names, and calling a nil function is a runtime crash, not a
    load error.
 
+**`bots/hero_selection.lua` does not parse under strict Lua 5.1.** It contains
+`break;`, which LuaJIT accepts but the 5.1 grammar does not, so step 1 reports a
+failure on that file at HEAD regardless of your changes. Check it by confirming
+the only parse error is that `break;`, and validate any edited region separately.
+Do not "fix" the semicolons just to make a checker happy.
+
 Say plainly when a change can only be validated in game. Don't imply more
 confidence than the checks support.
 
@@ -124,8 +130,26 @@ there is no partial override. Weigh what's lost before adding one.
 - Bots on a team share module state via `require` caching, so `FunLib` tables
   work for cross-bot coordination. Bot scopes and the `hero_selection.lua` scope
   may not share state — don't assume they do.
-- `UpdateLaneAssignments()` returns **PlayerID → Lane** pairs, not slot indices.
-  Radiant is 0–4, Dire 5–9. Keying it 1..5 silently breaks Dire entirely. This
-  was a real bug here; see the `CDS-PATCH` in `bots/hero_selection.lua`.
+- `UpdateLaneAssignments()` returns a table the engine indexes by **team slot
+  (1..5)**, *not* by PlayerID. This note used to say the opposite, and that was
+  wrong — it justified a patch that remapped the table onto player ids, and since
+  a Radiant player id is its slot minus one, every lane shifted one place: pos 1
+  was handed slot 2's lane, mid. The symptom was a carry permanently sharing the
+  human's mid lane, and it cost several games to find. Measured across two
+  matches with different heroes, the engine produced an identical assignment —
+  `pid0→MID, pid2→TOP, pid3→BOT, pid4→unset` — which is what gave it away. See
+  the `CDS-PATCH` in `bots/hero_selection.lua`. Dire's separate problem was a
+  genuine role/lane permutation, fixed slot-for-slot in
+  `CorrectPotentialLaneAssignment`; that one is unrelated to the keying.
+- **Nothing the bot VM `print()`s reaches `console.log`.** Every `[VScript]` line
+  in that file comes from the vscripts VM. Bot-VM diagnostics have to go through
+  `bot:ActionImmediate_Chat(msg, false)` (team-only), which does land in the log
+  as a `CLocalize::FindSafe failed to localize` warning. Two debugging attempts
+  were lost to printing into a void before this was understood.
+- Dota **tears the console log off at match start**: the menu goes to
+  `console.log`, and the match goes to `console.<matchid>.log` in
+  `game/dota/`. Needs `-condebug` in the launch options — and it must be in
+  Steam's Launch Options field, not appended to a `steam://` shortcut, where
+  everything after the URL is silently dropped.
 - Deterministic-per-window hashing is the pattern for making bots agree on a
   shared decision without a race. See `bots/mode_rune_generic.lua`.
