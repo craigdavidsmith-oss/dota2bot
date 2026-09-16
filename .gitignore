@@ -66,3 +66,7 @@ dist
 
 # user's personal customized settings
 game/Customize
+
+# Local telemetry captures. These contain Steam IDs and player names.
+tools/telemetry/data/
+__pycache__/

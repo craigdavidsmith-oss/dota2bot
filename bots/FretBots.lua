@@ -39,6 +39,9 @@ require 'bots.FretBots.RoleDetermination'
 -- Neutral items
 require 'bots.FretBots.NeutralItems'
 require 'bots.FretBots.modifiers.Modifier'
+-- CDS-PATCH: local match telemetry (tools/telemetry/server.py). No-ops when the
+-- sidecar is not running.
+local Telemetry = require 'bots.FretBots.Telemetry'
 
 -- Instantiate ourself
 if FretBots == nil then
@@ -110,6 +113,9 @@ function FretBots:PlayersLoadedTimer()
 		-- determine that they are not enabled
 		-- Disabled until this works
 		-- HeroLoneDruid:Initialize()
+		-- CDS-PATCH: start telemetry once DataTables is populated, so the first
+		-- snapshot already has AllUnits and the tower tables to read from.
+		Telemetry:Start()
 		-- Remove this timer
 		Timers:RemoveTimer(playersLoadedTimerName)
 		return nil

@@ -15,6 +15,8 @@ else Customize = require( GetScriptDirectory()..'/FunLib/custom_loader' ) end
 local Localization = require 'bots/FunLib/localization'
 -- HeroSounds
 local Chat = require('bots.FretBots.Chat')
+-- CDS-PATCH: local match telemetry.
+local Telemetry = require('bots.FretBots.Telemetry')
 if not Customize.Fretbots then Customize.Fretbots = { } end
 
 -- default difficulty if no one votes
@@ -1102,6 +1104,9 @@ function Settings:PostGameTimer()
 	}
 	Debug:Print(mData, 'Post Game Data')
 	Chat:SendHttpRequest('end', mData, PostGameCallback)
+	-- CDS-PATCH: mirror the outcome to the local telemetry sidecar, alongside a
+	-- final state snapshot. Independent of the upstream chat server above.
+	Telemetry:Finish(mData)
 	return 2
 end
 
