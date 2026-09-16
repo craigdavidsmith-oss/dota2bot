@@ -1100,6 +1100,12 @@ function ____exports.GetDefendDesireHelper(bot, lane)
             pingFloor = 0.95
         end
     end
+    if pingFloor > 0 then
+        local pingBuilding = unpack(____exports.GetFurthestBuildingOnLane(lane))
+        if IsValidBuildingTarget(pingBuilding) then
+            return 0.95
+        end
+    end
     local furthestBuilding, urgentMul, buildingTier = unpack(____exports.GetFurthestBuildingOnLane(lane))
     if not IsValidBuildingTarget(furthestBuilding) then
         return BotModeDesire.None

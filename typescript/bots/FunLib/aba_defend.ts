@@ -829,6 +829,29 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         }
     }
 
+    /* CDS-PATCH: act on the ping here rather than letting it fall through.
+       pingFloor was only applied about a hundred lines further down, after five
+       early returns: no valid building, "we should not bother and nobody is
+       there", "no enemies visible and an ally has it", "one enemy and we have
+       the numbers", and "the building is nearly dead anyway". Those are exactly
+       the judgements a human ping is meant to overrule, so the floor was usually
+       discarded before anything ever read it. aba_push.ts already returns
+       directly on a ping for this same reason.
+
+       Returning 0.95 also clears the bar in the teleport logic in
+       ability_item_usage_generic.lua, which needs the active mode to be a
+       DEFEND_TOWER_* with desire above MODERATE before it will spend a scroll --
+       so a pinged bot that is far from the lane now teleports instead of walking.
+
+       The one gate kept is that the lane still has something worth defending;
+       with no valid building there is nothing for the ping to mean. */
+    if (pingFloor > 0) {
+        const [pingBuilding] = GetFurthestBuildingOnLane(lane);
+        if (IsValidBuildingTarget(pingBuilding)) {
+            return 0.95 as BotModeDesire;
+        }
+    }
+
     // Compute desire anchored on furthest building
     const [furthestBuilding, urgentMul, buildingTier] = GetFurthestBuildingOnLane(lane);
     if (!IsValidBuildingTarget(furthestBuilding)) {
