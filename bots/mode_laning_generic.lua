@@ -31,6 +31,48 @@ local isChangePosMessageDone     = false
 
 if Utils.BuggyHeroesDueToValveTooLazy[botName] then local_mode_laning_generic = dofile( GetScriptDirectory().."/FunLib/override_generic/mode_laning_generic" ) end
 
+--[[ CDS-PATCH: derive the laning lane from the role, not from the engine.
+
+     bot:GetAssignedLane() is not reliable here. Measured in a live match with a
+     human at mid (pid 1, pos 2), the four bots reported:
+
+         pid 0  pos 1  ->  MID   (should be BOT)
+         pid 2  pos 3  ->  TOP   (correct)
+         pid 3  pos 4  ->  BOT   (should be TOP)
+         pid 4  pos 5  ->  BOT   (correct)
+
+     One mid, one top, two bottom is exactly what Valve's own bot AI produces for
+     a four-bot team, so UpdateLaneAssignments() in hero_selection.lua is not
+     taking effect and the engine default is being used instead. That default has
+     no idea the human took mid, so it posts a bot there -- which is the hero that
+     keeps turning up in the human's lane.
+
+     The roles are right (they match the "I will play position N" announcements),
+     so derive the lane from the role using the same mapping hero_selection would
+     have applied. This fixes laning only; other modes still read the engine lane.
+     The real fix is to make UpdateLaneAssignments take effect. ]]
+local function RoleLane()
+	local nPos = J.GetPosition(bot)
+	if nPos == nil then return nil end
+
+	-- J.GetPosition falls back to 2 when it cannot resolve a role, and 2 means
+	-- mid. If a human is already playing pos 2 then a bot claiming mid is that
+	-- fallback rather than a real assignment, so do not trust it.
+	if nPos == 2 and J.IsPosxHuman(2) then return nil end
+
+	if GetTeam() == TEAM_RADIANT then
+		if nPos == 1 or nPos == 5 then return LANE_BOT end
+		if nPos == 2 then return LANE_MID end
+		if nPos == 3 or nPos == 4 then return LANE_TOP end
+	else
+		if nPos == 1 or nPos == 5 then return LANE_TOP end
+		if nPos == 2 then return LANE_MID end
+		if nPos == 3 or nPos == 4 then return LANE_BOT end
+	end
+	return nil
+end
+
+
 --[[ CDS-PATCH: support "hands off the creeps" laning.
 
      Stock behaviour only installs a scripted laning Think() for known-buggy heroes
@@ -76,9 +118,11 @@ function GetDesire()
 	nInRangeEnemy = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
 	nFurthestEnemyAttackRange = GetFurthestEnemyAttackRange(nInRangeEnemy)
 	if local_mode_laning_generic then
-		botAssignedLane = local_mode_laning_generic.GetBotTargetLane()
+		-- The override already derives its lane from the role, same as RoleLane.
+		botAssignedLane = local_mode_laning_generic.GetBotTargetLane() or RoleLane() or bot:GetAssignedLane()
 	else
-		botAssignedLane = bot:GetAssignedLane()
+		-- CDS-PATCH: role first, engine lane only as a fallback. See RoleLane.
+		botAssignedLane = RoleLane() or bot:GetAssignedLane()
 	end
 	attackDamage = bot:GetAttackDamage()
 	if bot:GetItemSlotType(bot:FindItemSlot("item_quelling_blade")) == ITEM_SLOT_TYPE_MAIN then
@@ -123,6 +167,7 @@ function GetDesire()
 	if J.Utils.IsTeamPushingSecondTierOrHighGround(bot) then
 		return BOT_MODE_DESIRE_NONE
 	end
+
 	-- if J.ShouldGoFarmDuringLaning(bot) then
 	-- 	return 0.2
 	-- end

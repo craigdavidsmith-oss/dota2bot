@@ -262,22 +262,26 @@ tLaneAssignList = {
 local MidOnlyLaneAssignment = { [1]=LANE_MID,[2]=LANE_MID,[3]=LANE_MID,[4]=LANE_MID,[5]=LANE_MID }
 
 --[[ CDS-PATCH: lane assignment keying.
-     Valve's UpdateLaneAssignments() contract is "PlayerID -> Lane" pairs, but the
-     tables above are keyed 1..5 (team slot order). On Radiant that accidentally
-     lines up for player ids 1-4 and silently drops player id 0; on Dire the player
-     ids are 5..9, so NONE of the keys match and the engine falls back to its own
-     lane logic. That is why Dire bots ignore their assignments.
-     This helper remaps a slot-ordered table onto the real player ids. ]]
+     An earlier version of this patch remapped the slot-ordered tables onto real
+     player ids, on the theory that UpdateLaneAssignments() takes "PlayerID -> Lane"
+     pairs. Measured in game, that is wrong: the engine indexes the returned table
+     by TEAM SLOT (1..5). Because a Radiant player id is its slot minus one, the
+     remap shifted every lane by one place. Two matches, four bots each, different
+     heroes, identical result:
+
+         engine read out[1] (= slot 2's lane, MID) for slot 1  -> pos 1 sent MID
+         engine read out[3] (= slot 4's lane, TOP) for slot 3  -> pos 3 sent TOP
+         engine read out[4] (= slot 5's lane, BOT) for slot 4  -> pos 4 sent BOT
+         engine read out[5] (= nil)                for slot 5  -> engine default
+
+     That is the carry that keeps turning up in the human's mid lane: pos 1 was
+     being handed slot 2's lane. So pass the slot-ordered table straight through.
+
+     The Dire breakage the earlier patch was chasing is handled separately, by the
+     slot-for-slot fix in CorrectPotentialLaneAssignment below -- that one removed
+     a genuine role/lane permutation and is still in place. ]]
 local function ToPlayerIdKeyedLanes(tSlotLanes)
-	local out = {}
-	local players = GetTeamPlayers(GetTeam())
-	for i = 1, #players do
-		local lane = tSlotLanes[i]
-		if lane ~= nil then
-			out[players[i]] = lane
-		end
-	end
-	return out
+	return tSlotLanes
 end
 local OneVoneLaneAssignment = { [1]=LANE_MID,[2]=LANE_TOP,[3]=LANE_TOP,[4]=LANE_TOP,[5]=LANE_TOP }
 
