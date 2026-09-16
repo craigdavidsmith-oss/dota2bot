@@ -15,8 +15,32 @@ import { GetLocationToLocationDistance } from "./utils";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 
+/** CDS-PATCH: same accessor aba_push.ts uses, so push and defend read one set of
+ *  ping settings instead of disagreeing. */
+function CDS_GetHGCfg(): any {
+    if (!Customize.Enable) return {};
+    return (Customize as any).HighGround || {};
+}
+
+/** Which of our lane fronts is this ping closest to? Lets a ping that is not
+ *  sitting on top of a building still map to a lane, the way push already does. */
+function CDS_NearestOwnLane(nTeam: Team, vLoc: Vector): Lane | null {
+    let best: Lane | null = null;
+    let bestDist = math.huge;
+    for (const ln of [Lane.Top, Lane.Mid, Lane.Bot]) {
+        const d = GetLocationToLocationDistance(GetLaneFrontLocation(nTeam, ln, 0), vLoc);
+        if (d < bestDist) {
+            bestDist = d;
+            best = ln;
+        }
+    }
+    return best;
+}
+
 // == Tunables ==
-const PING_DELTA = 5.0;
+/** Fallback ping memory, in seconds, when Customize.HighGround is absent.
+ *  Matches aba_push.ts so a ping means the same thing to push and defend. */
+const PING_DELTA = 30.0;
 const SEARCH_RANGE_DEFAULT = 1600;
 // const CLOSE_RANGE = 1200;
 const MAX_DESIRE_CAP = 0.98;
@@ -779,10 +803,27 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
 
     // Human priority ping (use a hint floor instead of early-return)
     let pingFloor = 0;
+    /* CDS-PATCH: defend used a hardcoded 800 unit radius and a 5 second memory,
+       while push reads Ping_Radius / Ping_Memory_Seconds and defaults to 1600 and
+       30. Same ping, half the radius and a sixth of the memory, which is why
+       defend pings mostly did nothing. Use the shared settings, and fall back to
+       the nearest own lane when the ping is not sitting on a building -- push has
+       had that fallback all along, defend did not, so a ping anywhere but right
+       on the tower was simply dropped. */
+    const cdsCfg = CDS_GetHGCfg();
+    const nPingRadius: number = cdsCfg.Ping_Radius ?? 1600;
+    const nPingMemory: number = cdsCfg.Ping_Memory_Seconds ?? PING_DELTA;
+
     const [human, humanPing] = jmz.GetHumanPing();
-    if (human && humanPing && !humanPing.normal_ping && DotaTime() > 0) {
-        const [isPinged, pingedLane] = jmz.IsPingCloseToValidTower(gameState.team, humanPing, 800, 5.0);
-        if (isPinged && lane === pingedLane && GameTime() < humanPing.time + PING_DELTA) {
+    if (human && humanPing && humanPing.location !== null && !humanPing.normal_ping
+        && DotaTime() > 0 && GameTime() < humanPing.time + nPingMemory) {
+        const [isPinged, pingedLane] = jmz.IsPingCloseToValidTower(gameState.team, humanPing, nPingRadius, nPingMemory);
+        if (isPinged) {
+            if (lane === pingedLane) {
+                (bot as any).laneToDefend = lane;
+                pingFloor = 0.95;
+            }
+        } else if (CDS_NearestOwnLane(gameState.team, humanPing.location) === lane) {
             (bot as any).laneToDefend = lane;
             pingFloor = 0.95;
         }

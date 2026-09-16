@@ -201,7 +201,7 @@ local function __TS__ArrayForEach(self, callbackFn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local getDefendState, updateDefendGameStateCache, updateDefendLocationStateCache, updateDefendUnitStateCache, _q, _keyLoc, _recentHeroCountNear, IsValidBuildingTarget, IsBaseThreatActive, WeightedEnemiesAroundLocation, GetThreatenedLane, GetClosestAllyPos, IsThereNoTeammateTravelBootsDefender, GetHighGroundEdgeWaitPoint, ConsiderPingedDefend, okLoc, Localization, PING_DELTA, MAX_DESIRE_CAP, BASE_THREAT_RADIUS, BASE_THREAT_HOLD, CACHE_ENEMY_AROUND_LOC_HZ, CACHE_LASTSEEN_WINDOW, nTeam, _threatLaneSticky, baseThreatUntil, fTraveBootsDefendTime, _cacheEnemyAroundLoc, DEFEND_CACHE_TTL, defendGameStateCache, defendLocationStateCache, defendUnitStateCache
+local CDS_GetHGCfg, CDS_NearestOwnLane, getDefendState, updateDefendGameStateCache, updateDefendLocationStateCache, updateDefendUnitStateCache, _q, _keyLoc, _recentHeroCountNear, IsValidBuildingTarget, IsBaseThreatActive, WeightedEnemiesAroundLocation, GetThreatenedLane, GetClosestAllyPos, IsThereNoTeammateTravelBootsDefender, GetHighGroundEdgeWaitPoint, ConsiderPingedDefend, okLoc, Localization, Customize, PING_DELTA, MAX_DESIRE_CAP, BASE_THREAT_RADIUS, BASE_THREAT_HOLD, CACHE_ENEMY_AROUND_LOC_HZ, CACHE_LASTSEEN_WINDOW, nTeam, _threatLaneSticky, baseThreatUntil, fTraveBootsDefendTime, _cacheEnemyAroundLoc, DEFEND_CACHE_TTL, defendGameStateCache, defendLocationStateCache, defendUnitStateCache
 local jmz = require(GetScriptDirectory().."/FunLib/jmz_func")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Barracks = ____dota.Barracks
@@ -215,6 +215,27 @@ local ____native_2Doperators = require(GetScriptDirectory().."/ts_libs/utils/nat
 local add = ____native_2Doperators.add
 local ____utils = require(GetScriptDirectory().."/FunLib/utils")
 local GetLocationToLocationDistance = ____utils.GetLocationToLocationDistance
+function CDS_GetHGCfg()
+    if not Customize.Enable then
+        return {}
+    end
+    return Customize.HighGround or ({})
+end
+function CDS_NearestOwnLane(nTeam, vLoc)
+    local best = nil
+    local bestDist = math.huge
+    for ____, ln in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
+        local d = GetLocationToLocationDistance(
+            GetLaneFrontLocation(nTeam, ln, 0),
+            vLoc
+        )
+        if d < bestDist then
+            bestDist = d
+            best = ln
+        end
+    end
+    return best
+end
 function getDefendState(bot)
     if not bot._defend then
         bot._defend = {
@@ -330,19 +351,19 @@ function _recentHeroCountNear(loc, r, window)
     local cnt = 0
     for ____, id in ipairs(GetTeamPlayers(gameState.enemyTeam)) do
         do
-            local __continue19
+            local __continue25
             repeat
                 if not IsHeroAlive(id) then
-                    __continue19 = true
+                    __continue25 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(id)
                 if info and info[1] and info[1].time_since_seen <= window and GetLocationToLocationDistance(info[1].location, loc) <= r then
                     cnt = cnt + 1
                 end
-                __continue19 = true
+                __continue25 = true
             until true
-            if not __continue19 then
+            if not __continue25 then
                 break
             end
         end
@@ -1055,10 +1076,26 @@ function ____exports.GetDefendDesireHelper(bot, lane)
         return BotModeDesire.VeryLow
     end
     local pingFloor = 0
+    local cdsCfg = CDS_GetHGCfg()
+    local ____cdsCfg_Ping_Radius_11 = cdsCfg.Ping_Radius
+    if ____cdsCfg_Ping_Radius_11 == nil then
+        ____cdsCfg_Ping_Radius_11 = 1600
+    end
+    local nPingRadius = ____cdsCfg_Ping_Radius_11
+    local ____cdsCfg_Ping_Memory_Seconds_12 = cdsCfg.Ping_Memory_Seconds
+    if ____cdsCfg_Ping_Memory_Seconds_12 == nil then
+        ____cdsCfg_Ping_Memory_Seconds_12 = PING_DELTA
+    end
+    local nPingMemory = ____cdsCfg_Ping_Memory_Seconds_12
     local human, humanPing = jmz.GetHumanPing()
-    if human and humanPing and not humanPing.normal_ping and DotaTime() > 0 then
-        local isPinged, pingedLane = jmz.IsPingCloseToValidTower(gameState.team, humanPing, 800, 5)
-        if isPinged and lane == pingedLane and GameTime() < humanPing.time + PING_DELTA then
+    if human and humanPing and humanPing.location ~= nil and not humanPing.normal_ping and DotaTime() > 0 and GameTime() < humanPing.time + nPingMemory then
+        local isPinged, pingedLane = jmz.IsPingCloseToValidTower(gameState.team, humanPing, nPingRadius, nPingMemory)
+        if isPinged then
+            if lane == pingedLane then
+                bot.laneToDefend = lane
+                pingFloor = 0.95
+            end
+        elseif CDS_NearestOwnLane(gameState.team, humanPing.location) == lane then
             bot.laneToDefend = lane
             pingFloor = 0.95
         end
@@ -1187,7 +1224,7 @@ okLoc, Localization = pcall(
 if not okLoc then
     Localization = {Get = function(_) return "Defend here!" end}
 end
-local Customize = require(GetScriptDirectory().."/Customize/general")
+Customize = require(GetScriptDirectory().."/Customize/general")
 local ____Customize_1 = Customize
 local ____Customize_Enable_0
 if Customize.Enable then
@@ -1196,7 +1233,7 @@ else
     ____Customize_Enable_0 = 1
 end
 ____Customize_1.ThinkLess = ____Customize_Enable_0
-PING_DELTA = 5
+PING_DELTA = 30
 local SEARCH_RANGE_DEFAULT = 1600
 MAX_DESIRE_CAP = 0.98
 BASE_THREAT_RADIUS = 2600
