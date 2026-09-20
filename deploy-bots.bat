@@ -154,6 +154,55 @@ set "STAMPFILE=%DEST%\FunLib\build_stamp.lua"
 >>"%STAMPFILE%" echo ____exports.id = "%GITHASH%%DIRTY% @ %WHEN%"
 >>"%STAMPFILE%" echo return ____exports
 
+REM --- Sync the Customize override ---------------------------------------------
+REM  FunLib\custom_loader.lua requires "game/Customize/general" FIRST and only
+REM  falls back to the bots\Customize\general we just copied. So the settings file
+REM  that actually wins for hero_selection.lua, jmz_func.lua, aba_chat.lua,
+REM  localization.lua and FretBots\Settings.lua is the one in the Dota install,
+REM  NOT the one in this repo. Leave it alone and half the codebase reads stale
+REM  settings while the mode_*.lua files read current ones -- which is how a
+REM  setting ends up appearing to work and not work at the same time.
+REM
+REM  The repo copy is the source of truth. Push it, keeping a timestamped backup.
+REM
+REM  Note the !VAR! below rather than %VAR%: Steam lives under "Program Files
+REM  (x86)", and with %VAR% that ")" closes the enclosing block at parse time.
+set "OVERRIDE=%DOTA_DIR%\game\dota\scripts\vscripts\game\Customize\general.lua"
+set "OVERRIDESRC=%~dp0bots\Customize\general.lua"
+
+if not exist "!OVERRIDE!" goto :nooverride
+
+fc /b "!OVERRIDE!" "!OVERRIDESRC!" >nul 2>&1
+if not errorlevel 1 (
+    echo   Customize override already matches the repo copy.
+    goto :overridedone
+)
+
+set "BAKSTAMP="
+for /f "delims=" %%B in ('powershell -NoProfile -Command "Get-Date -Format 'yyyyMMdd-HHmmss'" 2^>nul') do set "BAKSTAMP=%%B"
+if not defined BAKSTAMP set "BAKSTAMP=backup"
+
+copy /y "!OVERRIDE!" "!OVERRIDE!.bak_!BAKSTAMP!" >nul
+if errorlevel 1 (
+    echo   [WARN] Could not back up the Customize override. Leaving it untouched.
+    echo          Your settings changes will NOT take effect. Close Dota and retry.
+    goto :overridedone
+)
+
+copy /y "!OVERRIDESRC!" "!OVERRIDE!" >nul
+if errorlevel 1 (
+    echo   [WARN] Could not write the Customize override at:
+    echo          !OVERRIDE!
+) else (
+    echo   Customize override synced ^(backup: general.lua.bak_!BAKSTAMP!^).
+)
+goto :overridedone
+
+:nooverride
+echo   No Customize override in the Dota install; the deployed copy will be used.
+
+:overridedone
+
 if %RC%==0 (
     echo   Files already up to date.
 ) else (

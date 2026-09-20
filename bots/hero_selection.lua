@@ -307,11 +307,50 @@ if Customize then
 	end
 end
 
+--[[ CDS-PATCH: mirror mode.
+
+     Customize.Mirror_Hero forces every bot slot, on both teams, onto one hero --
+     the 5v5 mirror game (5 Pudge vs 5 Pudge and friends). It deliberately
+     outranks Radiant_Heros/Dire_Heros, the ban list, the weak-hero cap and the
+     repeat policy: asking for a one-hero game is a stronger statement of intent
+     than any of them, and having the ban list quietly veto it would just look
+     broken.
+
+     This only handles the script half. Duplicate picks are blocked by the ENGINE,
+     which the bot VM cannot reach -- see bots/SameHero.lua for the console
+     command that lifts that. Without it the bots will ask for the mirror hero,
+     the engine will refuse, and you get a normal draft instead. ]]
+local sMirrorHero = nil
+
+if Customize and type(Customize.Mirror_Hero) == 'string' then
+	local hero = Utils.TrimString(Customize.Mirror_Hero)
+	if hero ~= '' then
+		if Utils.HasValue(SupportedHeroes, hero) then
+			sMirrorHero = hero
+			for i = 1, 5 do
+				sSelectList[i] = sMirrorHero
+			end
+			print('[MIRROR] Mirror mode ON -- every bot slot forced to '..sMirrorHero)
+			print('[MIRROR] Console step is still required: sv_cheats 1 ; script_reload_code bots/SameHero')
+		else
+			print('[MIRROR] [WARN] Customize.Mirror_Hero is not a supported hero: '..hero)
+			print('[MIRROR] [WARN] Mirror mode OFF. Use the internal name, e.g. npc_dota_hero_pudge')
+		end
+	end
+end
+
+function X.GetMirrorHero()
+	return sMirrorHero
+end
+
 --==============================================================================
 -- Utility: customization checks & shuffles
 --==============================================================================
 
 function X.IsInCustomizedPicks(name)
+	-- CDS-PATCH: the mirror hero counts as a forced pick, so PickHeroForBotSlot
+	-- keeps the preselect instead of running matchup scoring over it.
+	if sMirrorHero ~= nil and name == sMirrorHero then return true end
 	if not Customize then return false end
 	local heroes = {}
 	if GetTeam() == TEAM_RADIANT and Customize.Radiant_Heros then
@@ -460,6 +499,9 @@ end
 function X.CanPickHero(team, sHero)
 	if not sHero then return false end
 
+	-- CDS-PATCH: mirror mode outranks bans, the weak cap and the repeat policy.
+	if sMirrorHero ~= nil and sHero == sMirrorHero then return true end
+
 	-- Bans always block
 	if X.IsBannedHero(sHero) then return false end
 
@@ -497,6 +539,8 @@ end
 
 -- Kept for compatibility when code checks "repeatness" only
 function X.IsRepeatHero(sHero)
+	-- CDS-PATCH: repeats are the whole point in mirror mode.
+	if sMirrorHero ~= nil and sHero == sMirrorHero then return false end
 	if Customize and Customize.Allow_Repeated_Heroes then
 		return false
 	end

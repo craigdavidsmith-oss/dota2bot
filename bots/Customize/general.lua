@@ -33,7 +33,57 @@ Customize.Localization = "en"
 -- Please note that it is not 100% guaranteed that the banned hero will not be picked; for example if you banned too many heroes 
 -- like near 100% of the heroes, bots will need to randomly pick heroes regardless of the ban list to continue the game.
 Customize.Ban = {
-    'example_npc_dota_hero_internal_name_to_ban',
+    'npc_dota_hero_abaddon',
+    'npc_dota_hero_batrider',
+    'npc_dota_hero_bloodseeker',
+    'npc_dota_hero_bounty_hunter',
+    'npc_dota_hero_brewmaster',
+    'npc_dota_hero_broodmother',
+    'npc_dota_hero_chen',
+    'npc_dota_hero_clinkz',
+    'npc_dota_hero_dark_seer',
+    'npc_dota_hero_dark_willow',
+    'npc_dota_hero_dawnbreaker',
+    'npc_dota_hero_drow_ranger',
+    'npc_dota_hero_earth_spirit',
+    'npc_dota_hero_earthshaker',
+    'npc_dota_hero_elder_titan',
+    'npc_dota_hero_ember_spirit',
+    'npc_dota_hero_enigma',
+    'npc_dota_hero_faceless_void',
+    'npc_dota_hero_hoodwink',
+    'npc_dota_hero_invoker',
+    'npc_dota_hero_juggernaut',
+    'npc_dota_hero_kez',
+    'npc_dota_hero_leshrac',
+    'npc_dota_hero_life_stealer',
+    'npc_dota_hero_lone_druid',
+    'npc_dota_hero_luna',
+    'npc_dota_hero_lycan',
+    'npc_dota_hero_magnataur',
+    'npc_dota_hero_marci',
+    'npc_dota_hero_medusa',
+    'npc_dota_hero_morphling',
+    'npc_dota_hero_muerta',
+    'npc_dota_hero_phantom_assassin',
+    'npc_dota_hero_phoenix',
+    'npc_dota_hero_pudge',
+    'npc_dota_hero_pugna',
+    'npc_dota_hero_riki',
+    'npc_dota_hero_rubick',
+    'npc_dota_hero_skeleton_king',
+    'npc_dota_hero_slark',
+    'npc_dota_hero_spectre',
+    'npc_dota_hero_spirit_breaker',
+    'npc_dota_hero_techies',
+    'npc_dota_hero_tinker',
+    'npc_dota_hero_tusk',
+    'npc_dota_hero_vengefulspirit',
+    'npc_dota_hero_visage',
+    'npc_dota_hero_void_spirit',
+    'npc_dota_hero_weaver',
+    'npc_dota_hero_windrunner',
+    'npc_dota_hero_wisp',
 }
 
 --[[
@@ -62,8 +112,29 @@ Customize.Dire_Heros = {
 --]]
 Customize.Allow_Repeated_Heroes = false
 
+--[[
+CDS-PATCH: Mirror mode -- every bot on BOTH teams takes the same hero (5v5 mirror,
+e.g. 5 Pudge vs 5 Pudge). Set it to a hero internal name to turn it on, or '' for off.
+
+    Customize.Mirror_Hero = 'npc_dota_hero_pudge'
+
+TWO STEPS ARE REQUIRED. This setting is only the script half: it overrides
+Radiant_Heros/Dire_Heros, the ban list, the weak-hero cap and Allow_Repeated_Heroes
+for that one hero. Duplicate picks are blocked by the ENGINE, which the bot scripts
+cannot reach. So you also have to run, in the console, as soon as the map has loaded
+and before anyone readies up:
+
+    sv_cheats 1
+    script_reload_code bots/SameHero
+
+You have roughly 24 seconds from map load before the first bot picks. Miss it and
+the bots draft normally -- restart the lobby. You pick your own hero as usual; pick
+the mirror hero yourself if you want a true 5v5.
+--]]
+Customize.Mirror_Hero = ''
+
 -- The max number of weak heroes allowed in a team the bots can pick.
-Customize.Weak_Hero_Cap = 1
+Customize.Weak_Hero_Cap = 0
 
 -- The weak penalty curve for bots picking weak heroes:
 --   { type="linear", k=0.25 }         ->  penalty = max(0, 1 - k * (weakPicked/cap))
@@ -98,17 +169,17 @@ Customize.Dire_Names = {
 -- The desire level that the bots will group up and push the same lane. 
 -- 1 is mild meaning bots will group up only when convenient; 3 is bots will almost always try to push together.
 -- Group pushing may increase the difficulty but can reduce the game experience. 
-Customize.Force_Group_Push_Level = 1
+Customize.Force_Group_Push_Level = 2
 
 -- The Enhanced Fretbots mode settings:
 -- For more about Fretbots mode: https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/68
 -- Note: these settings below will override the pre-defind settings in Fretbots folder.
 Customize.Fretbots = {
     -- Default difficulty, a number between: [0, 10]
-    Default_Difficulty = 2,
+    Default_Difficulty = 3,
 
     -- Default ally bots bonus scale comparing to enemy bots, a number between: [0, 1]
-    Default_Ally_Scale = 0.5,
+    Default_Ally_Scale = 1,
 
     -- Set whether or not allowing the team to vote for difficulty. If false, will directly apply the default difficulty.
     Allow_To_Vote = true,
@@ -169,7 +240,7 @@ Customize.Dire_Bonus_Scale = 1.0
 -- Bots can become slow or dumb in reaction and decision making if you set this value to a higher number.
 -- When doing Local Host, you can potentially improve PC performance (FPS) by setting this to 1 to 10, which sacrifices some bot IQ/performance.
 -- This won't be very effective for FPS improvement because Valve has a lot of compute on their side that your PC have to handle for Local Hosting.
-Customize.ThinkLess = 1;
+Customize.ThinkLess = 0;
 
 return Customize
 
