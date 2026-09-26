@@ -116,20 +116,24 @@ Customize.Allow_Repeated_Heroes = false
 CDS-PATCH: Mirror mode -- every bot on BOTH teams takes the same hero (5v5 mirror,
 e.g. 5 Pudge vs 5 Pudge). Set it to a hero internal name to turn it on, or '' for off.
 
-    Customize.Mirror_Hero = 'npc_dota_hero_pudge'
+(Example value: 'npc_dota_hero_pudge'. This whole block is a comment and
+ editing it does nothing -- the live setting is the Mirror_Hero line directly
+ below the end of this comment block.)
 
-TWO STEPS ARE REQUIRED. This setting is only the script half: it overrides
-Radiant_Heros/Dire_Heros, the ban list, the weak-hero cap and Allow_Repeated_Heroes
-for that one hero. Duplicate picks are blocked by the ENGINE, which the bot scripts
-cannot reach. So you also have to run, in the console, as soon as the map has loaded
-and before anyone readies up:
+This setting drives the BOTS: it overrides Radiant_Heros/Dire_Heros, the ban list,
+the weak-hero cap and Allow_Repeated_Heroes for that one hero. Bot picks skip the
+engine's duplicate check, so on its own this gets every bot the mirror hero.
+
+HUMANS NEED A SECOND STEP. The engine refuses a human pick of a hero someone already
+has. To lift that, once the hero grid is on screen (not during the loading screen --
+too early and the command is silently dropped), run in the console:
 
     sv_cheats 1
     script_reload_code bots/SameHero
 
-You have roughly 24 seconds from map load before the first bot picks. Miss it and
-the bots draft normally -- restart the lobby. You pick your own hero as usual; pick
-the mirror hero yourself if you want a true 5v5.
+and check it prints "[SameHero] Same-hero selection ENABLED" before any human picks.
+The bots will usually have picked already; that is fine. Pick the mirror hero
+yourself for a true 5v5.
 --]]
 Customize.Mirror_Hero = ''
 

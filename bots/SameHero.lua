@@ -12,16 +12,33 @@
 --  this itself. Same deal as FretBots and Buff: it has to be a console command,
 --  by hand, once per match.
 --
---  USAGE -- open the console the moment the map has finished loading, while you
---  are still in hero selection, and run:
+--  USAGE -- wait until the hero grid is actually on screen, then run:
 --
 --      sv_cheats 1
 --      script_reload_code bots/SameHero
 --
---  Do it BEFORE anyone readies up. hero_selection.lua holds the bots back while
---  a human is unpicked (X.IsHumanNotReady), but that gate expires at GameTime()
---  20 regardless, and the first bot picks about 4s after that. So you have
---  roughly 24 seconds from map load. If you miss the window, restart the lobby.
+--  and check the console shows "[SameHero] Same-hero selection ENABLED". No
+--  line means no flag: the file did not run.
+--
+--  Ways it fails to run without an obvious error:
+--    - Too early. Typed during the loading screen, the command lands before the
+--      server's script VM exists and is dropped with "[VScript] Scripting
+--      disabled or no server running". That line, logged at map spawn ten
+--      seconds before hero selection opened, is the likely cause of the failed
+--      attempts on 2026-09-25. Wait for the hero grid.
+--    - Wrong path. It is bots/SameHero. A bare "SameHero" looks in the vscripts
+--      root, where there is no such file.
+--
+--  Timing against the BOTS does not matter. Bot SelectHero() calls skip the
+--  engine's uniqueness check entirely: on 2026-09-25 five and six bots took
+--  Pudge in matches where this flag was never set. The rule binds HUMAN picks
+--  only. So the one ordering that matters is flag first, then humans pick --
+--  humans should hold off until you have seen the line above.
+--
+--  (An earlier version of this note claimed a ~24s window before the bots pick.
+--  Wrong twice over: GameTime() includes the loading screen, so X.IsHumanNotReady's
+--  GameTime() > 20 cutoff has usually expired before the grid even appears and
+--  the first bot picks ~6s in; and as above, the bots never needed the flag.)
 --
 --  Pair with Customize.Mirror_Hero in bots/Customize/general.lua to make every
 --  bot take one hero. This file on its own only lifts the restriction; it does
