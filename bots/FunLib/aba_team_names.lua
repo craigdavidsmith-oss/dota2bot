@@ -3,7 +3,10 @@ local Utils = require( GetScriptDirectory()..'/FunLib/utils' )
 
 local Dota2Teams = { }
 
-Dota2Teams.defaultPostfix = 'OHA' -- Open Hyper AI.
+-- CDS-PATCH: this is Craig's custom build, run as the Local Dev Script, not the
+-- Workshop Open Hyper AI. Every bot's name ends in this, so the scoreboard shows
+-- at a glance which build is playing: ".CDS" here, ".OHA" for the Workshop one.
+Dota2Teams.defaultPostfix = 'CDS'
 Dota2Teams.maxTeamSize = 12 -- e.g. for 12 v 12
 
 -- List should have a least 4 teams for better performance.

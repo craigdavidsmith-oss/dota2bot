@@ -103,6 +103,20 @@ if not exist "%DOTA_DIR%\game\dota\scripts\vscripts" (
     goto :fail
 )
 
+REM --- Refuse to deploy through a link -----------------------------------------
+REM  vscripts\bots was once a symbolic link into the Steam Workshop download for
+REM  Open Hyper AI. Deploying through it wrote this build into Steam's folder, and
+REM  Steam then quietly restored its own files over the top: on 2026-10-06 it put
+REM  hero_selection.lua, mode_laning_generic.lua and mode_rune_generic.lua back to
+REM  upstream while leaving build_stamp.lua alone, so the bots kept announcing
+REM  this build's stamp while running mostly stock code.
+REM
+REM  This build must live in a real folder that only this script writes to. If
+REM  vscripts\bots is any kind of link, stop.
+set "VSCRIPTS=%DOTA_DIR%\game\dota\scripts\vscripts"
+dir /AL /B "%VSCRIPTS%" 2>nul | findstr /I /X "bots" >nul
+if not errorlevel 1 goto :islink
+
 echo   Source: %SRC%
 echo   Target: %DEST%
 echo.
@@ -154,54 +168,13 @@ set "STAMPFILE=%DEST%\FunLib\build_stamp.lua"
 >>"%STAMPFILE%" echo ____exports.id = "%GITHASH%%DIRTY% @ %WHEN%"
 >>"%STAMPFILE%" echo return ____exports
 
-REM --- Sync the Customize override ---------------------------------------------
-REM  FunLib\custom_loader.lua requires "game/Customize/general" FIRST and only
-REM  falls back to the bots\Customize\general we just copied. So the settings file
-REM  that actually wins for hero_selection.lua, jmz_func.lua, aba_chat.lua,
-REM  localization.lua and FretBots\Settings.lua is the one in the Dota install,
-REM  NOT the one in this repo. Leave it alone and half the codebase reads stale
-REM  settings while the mode_*.lua files read current ones -- which is how a
-REM  setting ends up appearing to work and not work at the same time.
-REM
-REM  The repo copy is the source of truth. Push it, keeping a timestamped backup.
-REM
-REM  Note the !VAR! below rather than %VAR%: Steam lives under "Program Files
-REM  (x86)", and with %VAR% that ")" closes the enclosing block at parse time.
-set "OVERRIDE=%DOTA_DIR%\game\dota\scripts\vscripts\game\Customize\general.lua"
-set "OVERRIDESRC=%~dp0bots\Customize\general.lua"
+REM --- No Customize override sync ------------------------------------------------
+REM  This build's FunLib\custom_loader.lua reads the Customize\general.lua inside
+REM  its own bot folder, the copy deployed above. game\Customize belongs to the
+REM  Workshop Open Hyper AI and is left exactly as it is. An earlier version of
+REM  this script copied the repo settings over it on every deploy, which made the
+REM  two builds share one settings file.
 
-if not exist "!OVERRIDE!" goto :nooverride
-
-fc /b "!OVERRIDE!" "!OVERRIDESRC!" >nul 2>&1
-if not errorlevel 1 (
-    echo   Customize override already matches the repo copy.
-    goto :overridedone
-)
-
-set "BAKSTAMP="
-for /f "delims=" %%B in ('powershell -NoProfile -Command "Get-Date -Format 'yyyyMMdd-HHmmss'" 2^>nul') do set "BAKSTAMP=%%B"
-if not defined BAKSTAMP set "BAKSTAMP=backup"
-
-copy /y "!OVERRIDE!" "!OVERRIDE!.bak_!BAKSTAMP!" >nul
-if errorlevel 1 (
-    echo   [WARN] Could not back up the Customize override. Leaving it untouched.
-    echo          Your settings changes will NOT take effect. Close Dota and retry.
-    goto :overridedone
-)
-
-copy /y "!OVERRIDESRC!" "!OVERRIDE!" >nul
-if errorlevel 1 (
-    echo   [WARN] Could not write the Customize override at:
-    echo          !OVERRIDE!
-) else (
-    echo   Customize override synced ^(backup: general.lua.bak_!BAKSTAMP!^).
-)
-goto :overridedone
-
-:nooverride
-echo   No Customize override in the Dota install; the deployed copy will be used.
-
-:overridedone
 
 if %RC%==0 (
     echo   Files already up to date.
@@ -214,8 +187,25 @@ echo.
 echo   The bots announce this stamp in team chat during hero selection.
 echo   If it does not match the line above, you are running an old copy.
 echo.
-echo   Reminder: lobby server location must be set to "Local Host",
-echo   and unsubscribe from the Workshop version or it may take precedence.
+echo   To play this build: lobby server location "Local Host", and in the
+echo   lobby's bot settings choose "Local Dev Script". The Workshop
+echo   Open Hyper AI stays selectable separately and is not touched.
+echo   Bots from this build have names ending in .CDS, not .OHA.
+goto :done
+
+REM  Reached only by an explicit goto. Labels do not stop execution in batch,
+REM  so the goto :done above keeps a successful deploy from falling into it.
+:islink
+echo  [ERROR] %VSCRIPTS%\bots is a link, not a real folder.
+echo.
+echo  Deploying through it would write this build into whatever it points at --
+echo  usually the Steam Workshop copy of Open Hyper AI, which Steam overwrites.
+echo  Remove the link itself, leaving its target alone, with:
+echo.
+echo      rmdir "%VSCRIPTS%\bots"
+echo.
+echo  then run this again. rmdir without /s deletes only the link.
+goto :fail
 
 :done
 echo.
