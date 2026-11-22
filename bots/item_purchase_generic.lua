@@ -49,6 +49,116 @@ for i = 1, #sPurchaseList
 	bot.purchaseListInReverseOrder[i] = sPurchaseList[#sPurchaseList - i + 1]
 end
 
+--[[ CDS-PATCH: buy BKB only against lineups it matters against.
+
+     Stock builds list BKB for 116 of 128 heroes, usually as the 4th to 6th major
+     item, whatever the enemy picked. In games that end early it barely ever
+     arrives, and against a lineup with no stuns it is wasted gold when it does.
+
+     Once every enemy pick is known this scores the lineup -- each enemy's
+     disabler level plus half its nuker level, from aba_hero_roles_map -- and
+     rewrites this bot's remaining purchase list once:
+
+       - below Customize.Smart_BKB.Threat_Threshold: drop BKB entirely
+       - at or above it, core (pos 1-3): move BKB up to just after the first
+         major item, and never later than where the build already had it
+       - at or above it, support: leave it where the build put it
+
+     A build that never planned a BKB is left alone; this never adds one.
+
+     The list is a stack with the next purchase on top, and the top entry is the
+     item being assembled: it is only popped once finished. So this runs strictly
+     between items, or the pop after a completed item would remove the wrong
+     entry. The ARDM and position-swap paths replace the list with a fresh table,
+     and the identity check on bot.smartBkbAppliedTo re-applies the rule then. ]]
+local RolesMap   = require( GetScriptDirectory()..'/FunLib/aba_hero_roles_map' )
+local CustomizeP = require( GetScriptDirectory()..'/Customize/general' )
+local SmartBkbCfg       = (CustomizeP.Enable and CustomizeP.Smart_BKB) or {}
+local bSmartBkb         = SmartBkbCfg.Enable == true
+local nBkbThreshold     = SmartBkbCfg.Threat_Threshold or 9
+local nBkbMajorItemCost = SmartBkbCfg.Major_Item_Cost or 2000
+local sBkb = 'item_black_king_bar'
+
+local function EnemyLineupThreat()
+	local nThreat, nKnown = 0, 0
+	local tIds = GetTeamPlayers( GetOpposingTeam() )
+	for _, id in pairs( tIds ) do
+		local sHero = GetSelectedHeroName( id )
+		if sHero ~= nil and sHero ~= '' then
+			nKnown = nKnown + 1
+			local tRoles = RolesMap.HeroRolesMap[sHero]
+			if tRoles ~= nil then
+				nThreat = nThreat + (tRoles.disabler or 0) + 0.5 * (tRoles.nuker or 0)
+			end
+		end
+	end
+	return nThreat, nKnown, #tIds
+end
+
+-- Boots and the starting "outfit" bundles never count as the first major item,
+-- whatever they cost: BKB belongs after a real farming or fighting item.
+local function IsMajorItem( sItem )
+	if string.find( sItem, '_outfit', 1, true )
+	or string.find( sItem, 'boots', 1, true )
+	or sItem == 'item_power_treads'
+	then
+		return false
+	end
+	local nCost = 0
+	for _, sBasic in pairs( Item.GetBasicItems( { sItem } ) ) do
+		nCost = nCost + GetItemCost( sBasic )
+	end
+	return nCost >= nBkbMajorItemCost
+end
+
+local function ApplySmartBkb()
+	local tStack = bot.purchaseListInReverseOrder
+	if not bSmartBkb or tStack == nil or bot.smartBkbAppliedTo == tStack then return end
+
+	-- Strictly between items; see the note above.
+	if bot.currBuyingItemInPurchaseList ~= nil or #bot.currBuyingBasicItemList > 0 then return end
+
+	-- The decision is about the whole enemy lineup, so wait for all of it.
+	local nThreat, nKnown, nEnemies = EnemyLineupThreat()
+	if nKnown == 0 or nKnown < nEnemies then return end
+
+	-- And about this bot's role. Role.GetPosition is nil until it resolves;
+	-- J.GetPosition would substitute 2 and treat every bot as a core.
+	local nPos = Role.GetPosition( bot )
+	if nPos == nil then return end
+
+	bot.smartBkbAppliedTo = tStack
+	if Item.HasItem( bot, sBkb ) then return end
+
+	-- Next purchase first, with every BKB taken out.
+	local tForward, nBkbAt = {}, nil
+	for i = #tStack, 1, -1 do
+		if tStack[i] == sBkb then
+			if nBkbAt == nil then nBkbAt = #tForward + 1 end
+		else
+			table.insert( tForward, tStack[i] )
+		end
+	end
+	if nBkbAt == nil then return end
+
+	if nThreat >= nBkbThreshold then
+		local nInsertAt = nBkbAt
+		if nPos <= 3 then
+			for i, sItem in ipairs( tForward ) do
+				if IsMajorItem( sItem ) then
+					nInsertAt = math.min( i + 1, nBkbAt )
+					break
+				end
+			end
+		end
+		table.insert( tForward, nInsertAt, sBkb )
+	end
+
+	-- Rewrite in place, so the table identity -- and the check above -- holds.
+	for i = #tStack, 1, -1 do tStack[i] = nil end
+	for i = 1, #tForward do tStack[i] = tForward[#tForward - i + 1] end
+end
+
 bot.sell_time = -90
 local check_time = -90
 
@@ -1154,6 +1264,10 @@ function ItemPurchaseThink()
 			end
 		end
 	end
+
+	-- CDS-PATCH: decide BKB against the enemy lineup. Called right before the
+	-- next item is chosen, which is the only point where reordering is safe.
+	ApplySmartBkb()
 
 	if #bot.purchaseListInReverseOrder == 0 then
 		_resetCurrentTarget()

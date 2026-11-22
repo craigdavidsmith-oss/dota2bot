@@ -235,6 +235,29 @@ Customize.HighGround = {
     Ping_Radius = 1600,
 }
 
+-- Black King Bar, matched to what the enemy team can actually do to you.
+-- The enemy lineup is scored once every pick is known: the sum of each enemy
+-- hero's disabler level plus half its nuker level (0-3 each, from
+-- FunLib/aba_hero_roles_map). Against a lineup at or above the threshold, cores
+-- buy BKB early; below it, nobody buys BKB at all. Measured over random
+-- lineups: 9 is roughly the more dangerous half. A stun-heavy team such as
+-- Lion / Shadow Shaman / Tidehunter / Lina / Zeus scores 15; five physical
+-- carries such as Juggernaut / Medusa / Sniper / Luna / Drow score 4.
+-- Largo is not in the role map yet and counts as 0.
+Customize.Smart_BKB = {
+    Enable = true,
+    Threat_Threshold = 9,
+    -- Cores move BKB to just after their first item costing at least this much.
+    -- Boots and starting "outfits" never count as that first item.
+    Major_Item_Cost = 2000,
+    -- Use it when committing to a fight against at least this many heroes.
+    -- Stock was 3, which can never happen against a two-human team.
+    Fight_Enemy_Count = 2,
+    -- ...or the moment an enemy with at least this disabler level is this close.
+    Disabler_Level = 2,
+    Disabler_Range = 700,
+}
+
 -- Compensation for the Dire side underperforming Radiant.
 -- Applied on top of the Fretbots bonus for Dire bots only. 1.0 = no change.
 -- 1.15 - 1.3 is a reasonable range. Only has an effect in Fretbots mode.

@@ -1338,6 +1338,25 @@ end
 
 
 --BKB
+--[[ CDS-PATCH: use BKB before the disable lands, not after.
+
+     Stock only fires BKB proactively against 3+ enemies within 800, which never
+     happens against a two-human team; everything else waits until the bot is
+     already rooted or silenced, or a spell is predicted to land. When that
+     prediction misses, the bot is stunned first -- and a stunned bot cannot
+     press BKB at all. Two extra triggers, both inside the stock gate (an enemy
+     within 1300, and the bot already fighting or retreating):
+
+       - committing to a fight against Fight_Enemy_Count or more heroes
+       - an enemy whose disabler level is at least Disabler_Level within
+         Disabler_Range: pop it before that hero gets the chance ]]
+local RolesMapUse = require( GetScriptDirectory()..'/FunLib/aba_hero_roles_map' )
+local SmartBkbUseCfg     = (Customize.Enable and Customize.Smart_BKB) or {}
+local bSmartBkbUse       = SmartBkbUseCfg.Enable == true
+local nBkbFightEnemies   = SmartBkbUseCfg.Fight_Enemy_Count or 2
+local nBkbDisablerLevel  = SmartBkbUseCfg.Disabler_Level or 2
+local nBkbDisablerRange  = SmartBkbUseCfg.Disabler_Range or 700
+
 X.ConsiderItemDesire["item_black_king_bar"] = function( hItem )
 	if bot:HasModifier('modifier_dazzle_nothl_projection_soul_debuff') then
 		return BOT_ACTION_DESIRE_NONE
@@ -1392,6 +1411,29 @@ X.ConsiderItemDesire["item_black_king_bar"] = function( hItem )
 		then
 			sCastMotive = '防御地点技能'
 			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
+		end
+
+		-- CDS-PATCH: proactive triggers; see the note above this function.
+		if bSmartBkbUse then
+			if J.IsGoingOnSomeone( bot ) and J.GetEnemyCount( bot, 800 ) >= nBkbFightEnemies
+			then
+				sCastMotive = 'BKB: committing to a fight'
+				return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
+			end
+
+			for _, enemy in pairs( nInRangeEnmyList ) do
+				if J.IsValidHero( enemy )
+				and not J.IsSuspiciousIllusion( enemy )
+				and GetUnitToUnitDistance( bot, enemy ) <= nBkbDisablerRange
+				then
+					local tRoles = RolesMapUse.HeroRolesMap[enemy:GetUnitName()]
+					if tRoles ~= nil and (tRoles.disabler or 0) >= nBkbDisablerLevel
+					then
+						sCastMotive = 'BKB: disabler in range'
+						return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
+					end
+				end
+			end
 		end
 
 		if J.GetEnemyCount( bot, 800 ) >= 3
