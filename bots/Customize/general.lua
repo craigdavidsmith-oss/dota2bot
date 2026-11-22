@@ -258,6 +258,20 @@ Customize.Smart_BKB = {
     Disabler_Range = 700,
 }
 
+-- Punishing a lone split pusher.
+-- Stock sends exactly one bot, teleported straight onto the tower, so the pusher
+-- sees it coming and leaves. With this on, a second bot may respond: it must
+-- have a disable, and it must be close enough to walk to the pusher's escape
+-- route. It walks there through the fog instead of teleporting, and waits for
+-- the pusher to run into it while the first bot arrives at the tower.
+Customize.Split_Push = {
+    Enable = true,
+    -- How far past the pusher, toward their base, the second bot sets up.
+    Flank_Offset = 1100,
+    -- The second bot only takes the job if it can walk to that spot within this.
+    Flank_Max_Walk = 4500,
+}
+
 -- Compensation for the Dire side underperforming Radiant.
 -- Applied on top of the Fretbots bonus for Dire bots only. 1.0 = no change.
 -- 1.15 - 1.3 is a reasonable range. Only has an effect in Fretbots mode.

@@ -10,7 +10,8 @@ if (!okLoc) Localization = { Get: (_: string) => "Defend here!" };
 import Customize = require("bots/Customize/general");
 
 import { Barracks, BotActionDesire, BotMode, BotModeDesire, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
-import { add } from "bots/ts_libs/utils/native-operators";
+import { add, length2D, multiply, sub } from "bots/ts_libs/utils/native-operators";
+import { HeroRolesMap } from "bots/FunLib/aba_hero_roles_map";
 import { GetLocationToLocationDistance } from "./utils";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
@@ -35,6 +36,65 @@ function CDS_NearestOwnLane(nTeam: Team, vLoc: Vector): Lane | null {
         }
     }
     return best;
+}
+
+/* CDS-PATCH: punishing a lone split pusher with a pincer.
+
+   Stock lets exactly one bot answer a single enemy at a tower: the moment any
+   ally commits, everyone else's defend desire drops to VeryLow. That bot then
+   teleports straight onto the tower, and the pusher, who can see the scroll
+   effect, walks away before it lands.
+
+   With Customize.Split_Push enabled, a second bot may answer, but only one that
+   has a disable and can walk to the pusher's escape route -- a point Flank_Offset
+   past the pusher on the line toward the pusher's own base. It walks there
+   through the fog instead of teleporting (ability_item_usage_generic skips the
+   defend scroll while bot.cdsFlankUntil is live), holds, and engages when the
+   pusher runs into it or when the first bot has arrived. The pusher dodges the
+   visible scroll and runs into the bot it could not see. */
+function CDS_GetSplitPushCfg(): any {
+    if (!Customize.Enable) return {};
+    return (Customize as any).Split_Push || {};
+}
+
+function CDS_IsDisabler(unit: Unit): boolean {
+    const roles = (HeroRolesMap as any)[unit.GetUnitName()];
+    return roles !== undefined && roles !== null && (roles.disabler ?? 0) > 0;
+}
+
+function CDS_IsDefendingLane(unit: Unit, lane: Lane): boolean {
+    const mode = unit.GetActiveMode();
+    return (
+        (mode === BotMode.DefendTowerTop && lane === Lane.Top) ||
+        (mode === BotMode.DefendTowerMid && lane === Lane.Mid) ||
+        (mode === BotMode.DefendTowerBot && lane === Lane.Bot)
+    );
+}
+
+function CDS_CountOthersDefendingLane(bot: Unit, lane: Lane): number {
+    let n = 0;
+    for (const ally of GetUnitList(UnitType.AlliedHeroes)) {
+        if (jmz.IsValidHero(ally) && ally !== bot && !ally.IsIllusion() && CDS_IsDefendingLane(ally, lane)) n += 1;
+    }
+    return n;
+}
+
+/** Where a pusher runs to: Flank_Offset past them, toward their own base. Falls
+ *  back to shorter offsets when the first choice is inside trees or a cliff. */
+function CDS_FlankPoint(pusherId: number): Vector | null {
+    const info = GetHeroLastSeenInfo(pusherId);
+    // NOTE: TS index 0 -> Lua index 1
+    if (!info || !info[0]) return null;
+    const pusherLoc = info[0].location;
+    const toBase = sub(GetAncient(GetOpposingTeam()).GetLocation(), pusherLoc);
+    const len = length2D(toBase);
+    if (len < 1) return null;
+    const nOffset: number = CDS_GetSplitPushCfg().Flank_Offset ?? 1100;
+    for (const scale of [1.0, 0.7, 0.45]) {
+        const loc = add(pusherLoc, multiply(toBase, (nOffset * scale) / len));
+        if (IsLocationPassable(loc)) return loc;
+    }
+    return null;
 }
 
 // == Tunables ==
@@ -885,8 +945,47 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (lEnemies.length === 0 && (jmz.IsAnyAllyDefending(bot, lane) || jmz.IsCore(bot))) {
         return BotModeDesire.VeryLow;
     }
-    if (lEnemies.length === 1 && (nEffAllies > lEnemies.length || (jmz.IsAnyAllyDefending(bot, lane) && jmz.GetAverageLevel(false) >= jmz.GetAverageLevel(true)))) {
-        return BotModeDesire.VeryLow;
+    if (lEnemies.length === 1) {
+        const splitCfg = CDS_GetSplitPushCfg();
+        if (splitCfg.Enable !== true) {
+            // Stock: one responder only.
+            if (nEffAllies > lEnemies.length || (jmz.IsAnyAllyDefending(bot, lane) && jmz.GetAverageLevel(false) >= jmz.GetAverageLevel(true))) {
+                return BotModeDesire.VeryLow;
+            }
+        } else {
+            // CDS-PATCH: up to two. A bot already on this lane keeps its place, so
+            // the first responder is never pushed out by the second-slot test.
+            const nOthers = CDS_CountOthersDefendingLane(bot, lane);
+            const bOnIt = CDS_IsDefendingLane(bot, lane);
+            const b: any = bot;
+
+            if (nEffAllies > 2 || (nOthers >= 2 && !bOnIt)) {
+                return BotModeDesire.VeryLow;
+            }
+
+            if (nOthers >= 1) {
+                if (bOnIt) {
+                    // Keep an existing flanker flanking while the pincer holds.
+                    if (b.cdsFlankLane === lane) b.cdsFlankUntil = DotaTime() + 3;
+                } else {
+                    // jmz_func.d.ts declares GetLastSeenEnemiesNearLoc as Unit[], but
+                    // the Lua returns player ids. Every other caller only reads .length.
+                    const flankLoc = CDS_FlankPoint((lEnemies as unknown as number[])[0]);
+                    const nMaxWalk: number = splitCfg.Flank_Max_Walk ?? 4500;
+                    if (!CDS_IsDisabler(bot) || flankLoc === null || GetUnitToLocationDistance(bot, flankLoc) > nMaxWalk) {
+                        return BotModeDesire.VeryLow;
+                    }
+                    // Mark before Think runs, so the teleport logic -- which may be
+                    // evaluated first this frame -- already knows not to scroll.
+                    b.cdsFlankLane = lane;
+                    b.cdsFlankUntil = DotaTime() + 3;
+                }
+            } else if (b.cdsFlankLane === lane) {
+                // Alone on the lane now: stop flanking and defend normally.
+                b.cdsFlankUntil = undefined;
+                b.cdsFlankLane = undefined;
+            }
+        }
     }
 
     // Cap & floor via ShouldDefend & tier
@@ -1056,6 +1155,35 @@ export function DefendThink(bot: Unit, lane: Lane) {
             bot.Action_AttackMove(attackMoveLoc);
         }
         return;
+    }
+
+    // CDS-PATCH: the flanking half of the pincer -- see CDS_FlankPoint.
+    const bFlanker: boolean = (bot as any).cdsFlankLane === lane && (bot as any).cdsFlankUntil !== undefined && DotaTime() < (bot as any).cdsFlankUntil;
+    if (bFlanker) {
+        // Player ids, despite the Unit[] in jmz_func.d.ts -- see the gate above.
+        const pusherIds = jmz.GetLastSeenEnemiesNearLoc(hub, 2500) as unknown as number[];
+        const flankLoc = pusherIds.length === 1 ? CDS_FlankPoint(pusherIds[0]) : null;
+        if (flankLoc !== null) {
+            const bAtFlank = GetUnitToLocationDistance(bot, flankLoc) <= 400;
+            for (const e of bot.GetNearbyHeroes(1600, true, BotMode.None)) {
+                if (jmz.IsValidHero(e) && e.GetPlayerID() === pusherIds[0] && jmz.IsInRange(bot, e, nSearchRange)) {
+                    // Spring it when the pusher runs into us, or once the bot at the
+                    // tower is on them -- not on the walk in, or we are just a second
+                    // lone defender the pusher can see coming.
+                    const frontNear = jmz.GetAlliesNearLoc(e.GetLocation(), 1200).filter(a => a !== bot).length > 0;
+                    if (bAtFlank || frontNear) {
+                        bot.Action_AttackUnit(e, true);
+                        return;
+                    }
+                }
+            }
+            if (!bAtFlank) {
+                bot.Action_MoveToLocation(flankLoc);
+            } else {
+                bot.Action_MoveToLocation(add(flankLoc, jmz.RandomForwardVector(80)));
+            }
+            return;
+        }
     }
 
     // Prefer nearest valid enemy hero within range (cheap local queries first)

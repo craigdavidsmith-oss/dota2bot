@@ -201,7 +201,7 @@ local function __TS__ArrayForEach(self, callbackFn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local CDS_GetHGCfg, CDS_NearestOwnLane, getDefendState, updateDefendGameStateCache, updateDefendLocationStateCache, updateDefendUnitStateCache, _q, _keyLoc, _recentHeroCountNear, IsValidBuildingTarget, IsBaseThreatActive, WeightedEnemiesAroundLocation, GetThreatenedLane, GetClosestAllyPos, IsThereNoTeammateTravelBootsDefender, GetHighGroundEdgeWaitPoint, ConsiderPingedDefend, okLoc, Localization, Customize, PING_DELTA, MAX_DESIRE_CAP, BASE_THREAT_RADIUS, BASE_THREAT_HOLD, CACHE_ENEMY_AROUND_LOC_HZ, CACHE_LASTSEEN_WINDOW, nTeam, _threatLaneSticky, baseThreatUntil, fTraveBootsDefendTime, _cacheEnemyAroundLoc, DEFEND_CACHE_TTL, defendGameStateCache, defendLocationStateCache, defendUnitStateCache
+local CDS_GetHGCfg, CDS_NearestOwnLane, CDS_GetSplitPushCfg, CDS_IsDisabler, CDS_IsDefendingLane, CDS_CountOthersDefendingLane, CDS_FlankPoint, getDefendState, updateDefendGameStateCache, updateDefendLocationStateCache, updateDefendUnitStateCache, _q, _keyLoc, _recentHeroCountNear, IsValidBuildingTarget, IsBaseThreatActive, WeightedEnemiesAroundLocation, GetThreatenedLane, GetClosestAllyPos, IsThereNoTeammateTravelBootsDefender, GetHighGroundEdgeWaitPoint, ConsiderPingedDefend, okLoc, Localization, Customize, PING_DELTA, MAX_DESIRE_CAP, BASE_THREAT_RADIUS, BASE_THREAT_HOLD, CACHE_ENEMY_AROUND_LOC_HZ, CACHE_LASTSEEN_WINDOW, nTeam, _threatLaneSticky, baseThreatUntil, fTraveBootsDefendTime, _cacheEnemyAroundLoc, DEFEND_CACHE_TTL, defendGameStateCache, defendLocationStateCache, defendUnitStateCache
 local jmz = require(GetScriptDirectory().."/FunLib/jmz_func")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Barracks = ____dota.Barracks
@@ -213,6 +213,11 @@ local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
 local ____native_2Doperators = require(GetScriptDirectory().."/ts_libs/utils/native-operators")
 local add = ____native_2Doperators.add
+local length2D = ____native_2Doperators.length2D
+local multiply = ____native_2Doperators.multiply
+local sub = ____native_2Doperators.sub
+local ____aba_hero_roles_map = require(GetScriptDirectory().."/FunLib/aba_hero_roles_map")
+local HeroRolesMap = ____aba_hero_roles_map.HeroRolesMap
 local ____utils = require(GetScriptDirectory().."/FunLib/utils")
 local GetLocationToLocationDistance = ____utils.GetLocationToLocationDistance
 function CDS_GetHGCfg()
@@ -235,6 +240,67 @@ function CDS_NearestOwnLane(nTeam, vLoc)
         end
     end
     return best
+end
+function CDS_GetSplitPushCfg()
+    if not Customize.Enable then
+        return {}
+    end
+    return Customize.Split_Push or ({})
+end
+function CDS_IsDisabler(unit)
+    local roles = HeroRolesMap[unit:GetUnitName()]
+    local ____temp_3 = roles ~= nil and roles ~= nil
+    if ____temp_3 then
+        local ____roles_disabler_2 = roles.disabler
+        if ____roles_disabler_2 == nil then
+            ____roles_disabler_2 = 0
+        end
+        ____temp_3 = ____roles_disabler_2 > 0
+    end
+    return ____temp_3
+end
+function CDS_IsDefendingLane(unit, lane)
+    local mode = unit:GetActiveMode()
+    return mode == BotMode.DefendTowerTop and lane == Lane.Top or mode == BotMode.DefendTowerMid and lane == Lane.Mid or mode == BotMode.DefendTowerBot and lane == Lane.Bot
+end
+function CDS_CountOthersDefendingLane(bot, lane)
+    local n = 0
+    for ____, ally in ipairs(GetUnitList(UnitType.AlliedHeroes)) do
+        if jmz.IsValidHero(ally) and ally ~= bot and not ally:IsIllusion() and CDS_IsDefendingLane(ally, lane) then
+            n = n + 1
+        end
+    end
+    return n
+end
+function CDS_FlankPoint(pusherId)
+    local info = GetHeroLastSeenInfo(pusherId)
+    if not info or not info[1] then
+        return nil
+    end
+    local pusherLoc = info[1].location
+    local toBase = sub(
+        GetAncient(GetOpposingTeam()):GetLocation(),
+        pusherLoc
+    )
+    local len = length2D(toBase)
+    if len < 1 then
+        return nil
+    end
+    local ____CDS_GetSplitPushCfg_result_Flank_Offset_4 = CDS_GetSplitPushCfg().Flank_Offset
+    if ____CDS_GetSplitPushCfg_result_Flank_Offset_4 == nil then
+        ____CDS_GetSplitPushCfg_result_Flank_Offset_4 = 1100
+    end
+    local nOffset = ____CDS_GetSplitPushCfg_result_Flank_Offset_4
+    for ____, scale in ipairs({1, 0.7, 0.45}) do
+        local loc = add(
+            pusherLoc,
+            multiply(toBase, nOffset * scale / len)
+        )
+        if IsLocationPassable(loc) then
+            return loc
+        end
+    end
+    return nil
 end
 function getDefendState(bot)
     if not bot._defend then
@@ -351,19 +417,19 @@ function _recentHeroCountNear(loc, r, window)
     local cnt = 0
     for ____, id in ipairs(GetTeamPlayers(gameState.enemyTeam)) do
         do
-            local __continue25
+            local __continue39
             repeat
                 if not IsHeroAlive(id) then
-                    __continue25 = true
+                    __continue39 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(id)
                 if info and info[1] and info[1].time_since_seen <= window and GetLocationToLocationDistance(info[1].location, loc) <= r then
                     cnt = cnt + 1
                 end
-                __continue25 = true
+                __continue39 = true
             until true
-            if not __continue25 then
+            if not __continue39 then
                 break
             end
         end
@@ -690,65 +756,65 @@ function IsThereNoTeammateTravelBootsDefender(bot)
     return true
 end
 function GetHighGroundEdgeWaitPoint(team, lane)
-    local ____temp_3
+    local ____temp_6
     if lane == Lane.Top then
-        ____temp_3 = GetTower(team, Tower.Top3)
+        ____temp_6 = GetTower(team, Tower.Top3)
     else
-        local ____temp_2
+        local ____temp_5
         if lane == Lane.Mid then
-            ____temp_2 = GetTower(team, Tower.Mid3)
+            ____temp_5 = GetTower(team, Tower.Mid3)
         else
-            ____temp_2 = GetTower(team, Tower.Bot3)
+            ____temp_5 = GetTower(team, Tower.Bot3)
         end
-        ____temp_3 = ____temp_2
+        ____temp_6 = ____temp_5
     end
-    local t3 = ____temp_3
-    local ____temp_5
+    local t3 = ____temp_6
+    local ____temp_8
     if lane == Lane.Top then
-        ____temp_5 = GetBarracks(team, Barracks.TopMelee)
+        ____temp_8 = GetBarracks(team, Barracks.TopMelee)
     else
-        local ____temp_4
+        local ____temp_7
         if lane == Lane.Mid then
-            ____temp_4 = GetBarracks(team, Barracks.MidMelee)
+            ____temp_7 = GetBarracks(team, Barracks.MidMelee)
         else
-            ____temp_4 = GetBarracks(team, Barracks.BotMelee)
+            ____temp_7 = GetBarracks(team, Barracks.BotMelee)
         end
-        ____temp_5 = ____temp_4
+        ____temp_8 = ____temp_7
     end
-    local raxM = ____temp_5
-    local ____temp_7
+    local raxM = ____temp_8
+    local ____temp_10
     if lane == Lane.Top then
-        ____temp_7 = GetBarracks(team, Barracks.TopRanged)
+        ____temp_10 = GetBarracks(team, Barracks.TopRanged)
     else
-        local ____temp_6
+        local ____temp_9
         if lane == Lane.Mid then
-            ____temp_6 = GetBarracks(team, Barracks.MidRanged)
+            ____temp_9 = GetBarracks(team, Barracks.MidRanged)
         else
-            ____temp_6 = GetBarracks(team, Barracks.BotRanged)
+            ____temp_9 = GetBarracks(team, Barracks.BotRanged)
         end
-        ____temp_7 = ____temp_6
+        ____temp_10 = ____temp_9
     end
-    local raxR = ____temp_7
+    local raxR = ____temp_10
     local anc = GetAncient(team)
-    local ____jmz_IsValidBuilding_result_10
+    local ____jmz_IsValidBuilding_result_13
     if jmz.IsValidBuilding(t3) then
-        ____jmz_IsValidBuilding_result_10 = t3
+        ____jmz_IsValidBuilding_result_13 = t3
     else
-        local ____jmz_IsValidBuilding_result_9
+        local ____jmz_IsValidBuilding_result_12
         if jmz.IsValidBuilding(raxM) then
-            ____jmz_IsValidBuilding_result_9 = raxM
+            ____jmz_IsValidBuilding_result_12 = raxM
         else
-            local ____jmz_IsValidBuilding_result_8
+            local ____jmz_IsValidBuilding_result_11
             if jmz.IsValidBuilding(raxR) then
-                ____jmz_IsValidBuilding_result_8 = raxR
+                ____jmz_IsValidBuilding_result_11 = raxR
             else
-                ____jmz_IsValidBuilding_result_8 = nil
+                ____jmz_IsValidBuilding_result_11 = nil
             end
-            ____jmz_IsValidBuilding_result_9 = ____jmz_IsValidBuilding_result_8
+            ____jmz_IsValidBuilding_result_12 = ____jmz_IsValidBuilding_result_11
         end
-        ____jmz_IsValidBuilding_result_10 = ____jmz_IsValidBuilding_result_9
+        ____jmz_IsValidBuilding_result_13 = ____jmz_IsValidBuilding_result_12
     end
-    local anchorBuilding = ____jmz_IsValidBuilding_result_10
+    local anchorBuilding = ____jmz_IsValidBuilding_result_13
     if anchorBuilding and jmz.IsValidBuilding(anc) then
         local t = anchorBuilding:GetLocation()
         local a = anc:GetLocation()
@@ -1077,16 +1143,16 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     end
     local pingFloor = 0
     local cdsCfg = CDS_GetHGCfg()
-    local ____cdsCfg_Ping_Radius_11 = cdsCfg.Ping_Radius
-    if ____cdsCfg_Ping_Radius_11 == nil then
-        ____cdsCfg_Ping_Radius_11 = 1600
+    local ____cdsCfg_Ping_Radius_14 = cdsCfg.Ping_Radius
+    if ____cdsCfg_Ping_Radius_14 == nil then
+        ____cdsCfg_Ping_Radius_14 = 1600
     end
-    local nPingRadius = ____cdsCfg_Ping_Radius_11
-    local ____cdsCfg_Ping_Memory_Seconds_12 = cdsCfg.Ping_Memory_Seconds
-    if ____cdsCfg_Ping_Memory_Seconds_12 == nil then
-        ____cdsCfg_Ping_Memory_Seconds_12 = PING_DELTA
+    local nPingRadius = ____cdsCfg_Ping_Radius_14
+    local ____cdsCfg_Ping_Memory_Seconds_15 = cdsCfg.Ping_Memory_Seconds
+    if ____cdsCfg_Ping_Memory_Seconds_15 == nil then
+        ____cdsCfg_Ping_Memory_Seconds_15 = PING_DELTA
     end
-    local nPingMemory = ____cdsCfg_Ping_Memory_Seconds_12
+    local nPingMemory = ____cdsCfg_Ping_Memory_Seconds_15
     local human, humanPing = jmz.GetHumanPing()
     if human and humanPing and humanPing.location ~= nil and not humanPing.normal_ping and DotaTime() > 0 and GameTime() < humanPing.time + nPingMemory then
         local isPinged, pingedLane = jmz.IsPingCloseToValidTower(gameState.team, humanPing, nPingRadius, nPingMemory)
@@ -1133,8 +1199,42 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     if #lEnemies == 0 and (jmz.IsAnyAllyDefending(bot, lane) or jmz.IsCore(bot)) then
         return BotModeDesire.VeryLow
     end
-    if #lEnemies == 1 and (nEffAllies > #lEnemies or jmz.IsAnyAllyDefending(bot, lane) and jmz.GetAverageLevel(false) >= jmz.GetAverageLevel(true)) then
-        return BotModeDesire.VeryLow
+    if #lEnemies == 1 then
+        local splitCfg = CDS_GetSplitPushCfg()
+        if splitCfg.Enable ~= true then
+            if nEffAllies > #lEnemies or jmz.IsAnyAllyDefending(bot, lane) and jmz.GetAverageLevel(false) >= jmz.GetAverageLevel(true) then
+                return BotModeDesire.VeryLow
+            end
+        else
+            local nOthers = CDS_CountOthersDefendingLane(bot, lane)
+            local bOnIt = CDS_IsDefendingLane(bot, lane)
+            local b = bot
+            if nEffAllies > 2 or nOthers >= 2 and not bOnIt then
+                return BotModeDesire.VeryLow
+            end
+            if nOthers >= 1 then
+                if bOnIt then
+                    if b.cdsFlankLane == lane then
+                        b.cdsFlankUntil = DotaTime() + 3
+                    end
+                else
+                    local flankLoc = CDS_FlankPoint(lEnemies[1])
+                    local ____splitCfg_Flank_Max_Walk_16 = splitCfg.Flank_Max_Walk
+                    if ____splitCfg_Flank_Max_Walk_16 == nil then
+                        ____splitCfg_Flank_Max_Walk_16 = 4500
+                    end
+                    local nMaxWalk = ____splitCfg_Flank_Max_Walk_16
+                    if not CDS_IsDisabler(bot) or flankLoc == nil or GetUnitToLocationDistance(bot, flankLoc) > nMaxWalk then
+                        return BotModeDesire.VeryLow
+                    end
+                    b.cdsFlankLane = lane
+                    b.cdsFlankUntil = DotaTime() + 3
+                end
+            elseif b.cdsFlankLane == lane then
+                b.cdsFlankUntil = nil
+                b.cdsFlankLane = nil
+            end
+        end
     end
     local capBoost = shouldDef and 0.1 or 0
     local maxDesire = (buildingTier >= 3 and nEffAllies >= #lEnemies and 1 or MAX_DESIRE_CAP) + capBoost
@@ -1382,6 +1482,44 @@ function ____exports.DefendThink(bot, lane)
             bot:Action_AttackMove(attackMoveLoc)
         end
         return
+    end
+    local bFlanker = bot.cdsFlankLane == lane and bot.cdsFlankUntil ~= nil and DotaTime() < bot.cdsFlankUntil
+    if bFlanker then
+        local pusherIds = jmz.GetLastSeenEnemiesNearLoc(hub, 2500)
+        local ____temp_17
+        if #pusherIds == 1 then
+            ____temp_17 = CDS_FlankPoint(pusherIds[1])
+        else
+            ____temp_17 = nil
+        end
+        local flankLoc = ____temp_17
+        if flankLoc ~= nil then
+            local bAtFlank = GetUnitToLocationDistance(bot, flankLoc) <= 400
+            for ____, e in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None)) do
+                if jmz.IsValidHero(e) and e:GetPlayerID() == pusherIds[1] and jmz.IsInRange(bot, e, nSearchRange) then
+                    local frontNear = #__TS__ArrayFilter(
+                        jmz.GetAlliesNearLoc(
+                            e:GetLocation(),
+                            1200
+                        ),
+                        function(____, a) return a ~= bot end
+                    ) > 0
+                    if bAtFlank or frontNear then
+                        bot:Action_AttackUnit(e, true)
+                        return
+                    end
+                end
+            end
+            if not bAtFlank then
+                bot:Action_MoveToLocation(flankLoc)
+            else
+                bot:Action_MoveToLocation(add(
+                    flankLoc,
+                    jmz.RandomForwardVector(80)
+                ))
+            end
+            return
+        end
     end
     local enemiesAtHub = jmz.GetEnemiesNearLoc(hub, SEARCH_RANGE_DEFAULT)
     if jmz.IsValidHero(enemiesAtHub[1]) and jmz.IsInRange(bot, enemiesAtHub[1], nSearchRange) then

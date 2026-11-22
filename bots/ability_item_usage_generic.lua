@@ -5219,9 +5219,15 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 	end
 
 	--守塔
+	-- CDS-PATCH: a bot flanking a split pusher walks in through the fog. A scroll
+	-- onto the tower is exactly the warning that lets the pusher leave, so it
+	-- never teleports while it holds that job. aba_defend sets the flag.
+	local bFlanking = bot.cdsFlankUntil ~= nil and DotaTime() < bot.cdsFlankUntil
+
 	if J.IsDefending( bot )
 		and nModeDesire > BOT_MODE_DESIRE_MODERATE
 		and nEnemyCount == 0
+		and not bFlanking
 	then
 		local nDefendLane, sLane = LANE_MID, 'tower_mid'
 		if nMode == BOT_MODE_DEFEND_TOWER_TOP then nDefendLane, sLane = LANE_TOP, 'tower_top' end
