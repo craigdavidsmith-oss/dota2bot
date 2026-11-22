@@ -84,8 +84,38 @@ end
      and holds the lane, but never takes a last hit while an ally core is close
      enough to want it. Cores keep exactly the stock code path. ]]
 local SupportCfg     = (Customize.Enable and Customize.Support_No_Steal) or {}
-local bSupportNoSteal = SupportCfg.Enable == true and J.GetPosition(bot) >= 4
 local nStealCoreRadius = SupportCfg.Core_Radius or 1200
+
+--[[ CDS-PATCH: do not latch the support test at file load.
+
+     This used to read
+
+         local bSupportNoSteal = SupportCfg.Enable == true and J.GetPosition(bot) >= 4
+
+     at file scope, and it decides whether the no-steal Think() below is ever
+     *defined*. J.GetPosition falls back to 2 when it cannot resolve a role yet,
+     and 2 is not >= 4, so a support whose role had not settled by the moment its
+     mode script loaded silently got no Think() at all -- Valve's built-in laning
+     brain instead, which happily last-hits next to its own carry. There is no
+     retry: the decision is latched for the whole match.
+
+     Think() is all or nothing, so the definition still has to be decided at load.
+     The fix is to make that decision *inclusive*: install it when the bot is a
+     support, or when the role is not yet known. J.Role.GetPosition returns nil in
+     that second case, which is the signal J.GetPosition discards by substituting
+     2. A bot with a resolved core role is unaffected and keeps the stock path.
+
+     Whether the deferral actually applies is then re-checked every frame in
+     Think(), by which point the role has settled. mode_farm_generic.lua already
+     does its equivalent camp check this way. ]]
+local nLoadTimeRole = J.Role.GetPosition(bot)
+local bSupportNoSteal = SupportCfg.Enable == true
+	and (nLoadTimeRole == nil or nLoadTimeRole >= 4)
+
+-- Runtime truth, as opposed to the load-time guess above.
+local function IsSupportNow()
+	return SupportCfg.Enable == true and J.GetPosition(bot) >= 4
+end
 
 -- Would one of our cores plausibly want this creep? Ranged cores stand further
 -- back, so scale the guard radius with the nearest core's attack range.
@@ -256,7 +286,9 @@ if bSupportNoSteal and not local_mode_laning_generic then
 	function Think()
 		if J.CanNotUseAction(bot) then return end
 
-		local bCoreHere = IsCoreClaimingCreeps()
+		-- Only a support defers. If the load-time guess was wrong and this is
+		-- actually a core, it lanes normally and takes its own last hits.
+		local bCoreHere = IsSupportNow() and IsCoreClaimingCreeps()
 
 		-- Denies are always the support's job.
 		local denyCreep = GetBestDenyCreep(nAllyCreeps)
