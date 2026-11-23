@@ -713,7 +713,14 @@ function DataTables:GetRole(hero)
 end
 
 -- Returns true if the unit is an actual hero and not a hero-like unit
+-- CDS-PATCH: Lone Druid's Spirit Bear passes IsHero()/IsRealHero(), so it was
+-- counted as an extra human. PurgeHumanSideBots then removed one bot too few
+-- from the human side, leaving an allied bot in the enemy list; six bots for
+-- five roles crashed Initialize before any bonus timer was registered, and
+-- FretBots silently did nothing for the whole match. Only npc_dota_hero_* units
+-- are heroes here (HeroLoneDruid finds the bear on its own).
 function DataTables:IsRealHero(unit)
+	if string.sub(unit:GetName(), 1, 14) ~= 'npc_dota_hero_' then return false end
 	return unit:IsHero() and unit:IsRealHero() and not unit:IsIllusion() and not unit:IsClone()
 end
 
