@@ -262,13 +262,17 @@ Customize.Smart_BKB = {
 }
 
 -- Punishing a lone split pusher.
--- Stock sends exactly one bot, teleported straight onto the tower, so the pusher
--- sees it coming and leaves. With this on, a second bot may respond: it must
--- have a disable, and it must be close enough to walk to the pusher's escape
--- route. It walks there through the fog instead of teleporting, and waits for
--- the pusher to run into it while the first bot arrives at the tower.
+-- With this on, a second bot may respond: it must have a disable, and it must
+-- be close enough to walk to the pusher's escape route. It walks there through
+-- the fog instead of teleporting, and waits for the pusher to run into it while
+-- the first bot arrives at the tower.
+-- OFF (2026-11-26): it made defending worse. Stock does not send just one bot:
+-- when the bots are behind on levels it also lets a second bot respond, and that
+-- bot teleports in. This replaced that teleporting defender with a walking
+-- disabler -- or with nobody, if no disabler was close -- so towers, T3s
+-- included, got fewer and slower defenders. false runs the stock rule verbatim.
 Customize.Split_Push = {
-    Enable = true,
+    Enable = false,
     -- How far past the pusher, toward their base, the second bot sets up.
     Flank_Offset = 1100,
     -- The second bot only takes the job if it can walk to that spot within this.
