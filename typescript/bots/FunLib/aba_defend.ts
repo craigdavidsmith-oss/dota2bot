@@ -57,6 +57,46 @@ function CDS_GetSplitPushCfg(): any {
     return (Customize as any).Split_Push || {};
 }
 
+/* CDS-PATCH: high-ground defenders that fight.
+   The tier >= 3 branch of DefendThink holds every defender 250 units behind the
+   building, on the base side, and 200 further back when alone or contested, and
+   only attack-moves there. A hero hitting the T3 from the front is out of reach
+   of that, so bots could stand beside a dying T3 doing nothing. This picks an
+   enemy hero at the building to attack instead, when the numbers allow it. */
+function CDS_GetT3Cfg(): any {
+    if (!Customize.Enable) return {};
+    return (Customize as any).T3_Defense || {};
+}
+
+/** The enemy hero a bot defending high-ground building bld should attack, or null
+ *  to keep the stock hold-back. Prefers the hero hitting the building, then the
+ *  lowest HP. Needs at least as many of us at the building as there are of them;
+ *  last-seen heroes count against us, so one standing in the fog is not ignored. */
+function CDS_T3Target(bot: Unit, bld: Unit): Unit | null {
+    const cfg = CDS_GetT3Cfg();
+    if (cfg.Enable !== true) return null;
+    if (jmz.GetHP(bot) < (cfg.Min_HP ?? 0.35)) return null;
+    const nRadius: number = cfg.Engage_Radius ?? 1000;
+    const vBld = bld.GetLocation();
+    const enemies = jmz.GetEnemiesNearLoc(vBld, nRadius);
+    if (enemies.length === 0) return null;
+    const nEnemies = math.max(enemies.length, jmz.GetLastSeenEnemiesNearLoc(vBld, nRadius + 400).length);
+    const nAllies = jmz.GetAlliesNearLoc(vBld, nRadius + 400).length;
+    if (nAllies < nEnemies) return null;
+    let best: Unit | null = null;
+    let bestScore = math.huge;
+    for (const e of enemies) {
+        if (jmz.IsValidHero(e) && jmz.CanBeAttacked(e)) {
+            const score = jmz.GetHP(e) - (e.GetAttackTarget() === bld ? 1 : 0);
+            if (score < bestScore) {
+                best = e;
+                bestScore = score;
+            }
+        }
+    }
+    return best;
+}
+
 function CDS_IsDisabler(unit: Unit): boolean {
     const roles = (HeroRolesMap as any)[unit.GetUnitName()];
     return roles !== undefined && roles !== null && (roles.disabler ?? 0) > 0;
@@ -1139,6 +1179,14 @@ export function DefendThink(bot: Unit, lane: Lane) {
 
     // If we are defending tier ≥3 lane hold the edge of the high ground
     if (buildingTier >= 3) {
+        // CDS-PATCH: fight a hero at the building rather than wait behind it.
+        if (IsValidBuildingTarget(bld)) {
+            const t3Target = CDS_T3Target(bot, bld);
+            if (t3Target !== null) {
+                bot.Action_AttackUnit(t3Target, true);
+                return;
+            }
+        }
         const edgeInside = GetHighGroundEdgeWaitPoint(nTeam, lane);
         const enemyAtHG = jmz.Utils.CountEnemyHeroesOnHighGround(nTeam); // 0/1/2+
         const nearEdgeEnemies = jmz.GetLastSeenEnemiesNearLoc(edgeInside, 1200);

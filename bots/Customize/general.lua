@@ -279,6 +279,20 @@ Customize.Split_Push = {
     Flank_Max_Walk = 4500,
 }
 
+-- Defending high-ground buildings (T3 towers, barracks, T4s).
+-- Stock holds defending bots 250-450 units behind the building, on the base
+-- side, and they only fight what walks up to them -- so a hero hitting the T3
+-- from the front is usually out of reach and the bots watch it fall. With this
+-- on, a defending bot attacks an enemy hero within Engage_Radius of the
+-- building (the one hitting the building first, then the lowest HP), as long as
+-- at least as many bots are at the building as enemies. Outnumbered, or below
+-- Min_HP, it holds back as before. false restores the stock hold-back.
+Customize.T3_Defense = {
+    Enable = true,
+    Engage_Radius = 1000,
+    Min_HP = 0.35,
+}
+
 -- Compensation for the Dire side underperforming Radiant.
 -- Applied on top of the Fretbots bonus for Dire bots only. 1.0 = no change.
 -- 1.15 - 1.3 is a reasonable range. Only has an effect in Fretbots mode.
